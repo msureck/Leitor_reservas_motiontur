@@ -108,6 +108,20 @@ def classificar_por_faixa_etaria(idade):
     else:
         return 'Idoso'
 
+def extrair_Origem(nome_arquivo):
+    # Extrai o Origem se houver (palavra(s) antes do primeiro nome)
+    partes = nome_arquivo.replace('.pdf', '').split()
+    if len(partes) > 2 and not partes[0].isdigit():
+        # Considera Origem tudo até o primeiro nome (assumindo nome próprio com inicial maiúscula)
+        for i, p in enumerate(partes):
+            if p.istitle():
+                return ' '.join(partes[:i])
+        return partes[0]
+    elif len(partes) > 1 and not partes[0].istitle():
+        return partes[0]
+    else:
+        return None
+
 # Função principal de processamento
 def processar_pdfs(uploaded_files):
     
@@ -132,10 +146,13 @@ def processar_pdfs(uploaded_files):
     total_files = len(uploaded_files)
 
     # Criar um diretório temporário para salvar os PDFs
+    Origens_lista = []
+    valores_por_arquivo = {}
     with tempfile.TemporaryDirectory() as temp_dir:
-        
         for idx, uploaded_file in enumerate(uploaded_files):
             pdf_base_name = uploaded_file.name
+            Origem = extrair_Origem(pdf_base_name)
+            Origens_lista.append(Origem)
             status_text.text(f"📄 Analisando: {pdf_base_name} ({idx + 1}/{total_files})")
             
             # Atualizar barra de progresso
@@ -180,6 +197,7 @@ def processar_pdfs(uploaded_files):
                         'Idade': pessoa['idade'],
                         'Passeio': None
                     })
+
 
             # Use Tabula to extract the text from the first page within the specified area
             pdf_text = tabula.read_pdf(temp_pdf_path, pages='1', area=extraction_area, output_format="json")
@@ -237,6 +255,9 @@ def processar_pdfs(uploaded_files):
                 df_valores.insert(0, 'Nome Arquivo', pdf_base_name_clean)
 
                 resultados_valores = pd.concat([resultados_valores, df_valores], ignore_index=True)
+                # Salvar valor para o arquivo
+                if not df_valores.empty and 'Valor por Voucher' in df_valores.columns:
+                    valores_por_arquivo[pdf_base_name] = df_valores['Valor por Voucher'].sum()
 
                 # Extraindo Passeios
                 extraction_area_passeios = [passeio, 0.00, (passeio + 50.00), 600.00]
@@ -354,7 +375,30 @@ def processar_pdfs(uploaded_files):
             df_resultado = df_resultado.merge(pivot[['Passeio','Criança','Adolescente','Jovem','Adulto','Idoso']],
                                               left_on='PASSEIO', right_on='Passeio', how='left')
             df_resultado.drop(columns=['Passeio'], inplace=True)
-    return df, df_resultado, df_resumo_idades, df_detalhes_idades, df_pessoas_passeios
+
+    # DataFrame de Origens
+    df_Origens = None
+    if Origens_lista:
+        df_valores_arquivos = pd.DataFrame({
+            'Arquivo': list(valores_por_arquivo.keys()),
+            'Origem': [extrair_Origem(nome) for nome in valores_por_arquivo.keys()],
+            'Valor por Arquivo': list(valores_por_arquivo.values())
+        })
+        df_Origens = df_valores_arquivos.groupby('Origem').agg(
+            Quantidade_Arquivos=('Arquivo', 'count'),
+            Soma_Valores=('Valor por Arquivo', 'sum')
+        ).reset_index()
+        # Formatar coluna Soma_Valores
+        df_Origens['Soma_Valores'] = df_Origens['Soma_Valores'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+        # Adicionar linha em branco e linha de total
+        # Soma apenas dos valores já agrupados por Origem (removendo linhas vazias e total)
+        soma_Origens = df_Origens['Soma_Valores'].replace('[^\d,]', '', regex=True).replace('', '0').apply(lambda x: float(x.replace('.', '').replace(',', '.')) if x else 0.0).sum()
+        linha_vazia = pd.DataFrame([{col: '' for col in df_Origens.columns}])
+        linha_total = pd.DataFrame([{col: '' for col in df_Origens.columns}])
+        linha_total.loc[0, 'Origem'] = 'Total:'
+        linha_total.loc[0, 'Soma_Valores'] = f"R$ {soma_Origens:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        df_Origens = pd.concat([df_Origens, linha_vazia, linha_total], ignore_index=True)
+    return df, df_resultado, df_resumo_idades, df_detalhes_idades, df_pessoas_passeios, df_Origens
 
 
 # Interface do usuário
@@ -374,7 +418,7 @@ if st.button("Executar Análise", disabled=not uploaded_files):
     if uploaded_files:
         with st.spinner("Processando arquivos..."):
             try:
-                df_valores, df_passeios, df_resumo_idades, df_detalhes_idades, df_pessoas_passeios = processar_pdfs(uploaded_files)
+                df_valores, df_passeios, df_resumo_idades, df_detalhes_idades, df_pessoas_passeios, df_Origens = processar_pdfs(uploaded_files)
 
                 if df_valores is not None and df_passeios is not None:
                     # Criar o Excel em memória
@@ -388,6 +432,9 @@ if st.button("Executar Análise", disabled=not uploaded_files):
                         # Nova sheet com pessoas e passeios
                         if not df_pessoas_passeios.empty:
                             df_pessoas_passeios.to_excel(writer, sheet_name='PessoasPasseios', index=False)
+                        # Nova sheet com resumo de Origens
+                        if df_Origens is not None and not df_Origens.empty:
+                            df_Origens.to_excel(writer, sheet_name='ResumoOrigens', index=False)
                     excel_data = output.getvalue()
 
                     st.success("✅ Análise Concluída!")
