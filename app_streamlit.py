@@ -95,15 +95,11 @@ def extrair_idades_do_pdf(caminho_pdf):
 def classificar_por_faixa_etaria(idade):
     """
     Classifica a idade em faixas:
-    Criança (até 12), Adolescente (13-17), Jovem (18-25), Adulto (26-59), Idoso (60+)
+    Criança (<12), Adulto (<59), Idoso (60+)
     """
     if idade <= 12:
         return 'Criança'
-    elif idade <= 17:
-        return 'Adolescente'
-    elif idade <= 25:
-        return 'Jovem'
-    elif idade <= 59:
+    elif idade < 60:
         return 'Adulto'
     else:
         return 'Idoso'
@@ -315,26 +311,20 @@ def processar_pdfs(uploaded_files):
     if not df_detalhes_idades.empty:
         todas_idades = df_detalhes_idades['Idade'].tolist()
         criancas = sum(1 for i in todas_idades if i <= 12)
-        adolescentes = sum(1 for i in todas_idades if 13 <= i <= 17)
-        jovens = sum(1 for i in todas_idades if 18 <= i <= 25)
-        adultos = sum(1 for i in todas_idades if 26 <= i <= 59)
+        adultos = sum(1 for i in todas_idades if 13 <= i < 60)
         idosos = sum(1 for i in todas_idades if i >= 60)
 
         total = len(todas_idades)
         df_resumo_idades = pd.DataFrame({
             'Faixa Etária': [
-                'Criança (até 12 anos)',
-                'Adolescente (13-17 anos)',
-                'Jovem (18-25 anos)',
-                'Adulto (26-59 anos)',
+                'Criança (<12 anos)',
+                'Adulto (12-59 anos)',
                 'Idoso (60+ anos)',
                 '',
                 'TOTAL'
             ],
             'Quantidade': [
                 criancas,
-                adolescentes,
-                jovens,
                 adultos,
                 idosos,
                 '',
@@ -342,8 +332,6 @@ def processar_pdfs(uploaded_files):
             ],
             'Percentual': [
                 f"{(criancas/total*100):.1f}%" if total > 0 else "0%",
-                f"{(adolescentes/total*100):.1f}%" if total > 0 else "0%",
-                f"{(jovens/total*100):.1f}%" if total > 0 else "0%",
                 f"{(adultos/total*100):.1f}%" if total > 0 else "0%",
                 f"{(idosos/total*100):.1f}%" if total > 0 else "0%",
                 '',
@@ -366,13 +354,13 @@ def processar_pdfs(uploaded_files):
             aggfunc='count',
             fill_value=0
         ).reset_index()
-        # Renomear colunas para garantir ordem e nomes
-        for col in ['Criança', 'Adolescente', 'Jovem', 'Adulto', 'Idoso']:
+        # Garantir colunas presentes
+        for col in ['Criança', 'Adulto', 'Idoso']:
             if col not in pivot.columns:
                 pivot[col] = 0
         # Mesclar com df_resultado (df_passeios)
         if not df_resultado.empty and 'PASSEIO' in df_resultado.columns:
-            df_resultado = df_resultado.merge(pivot[['Passeio','Criança','Adolescente','Jovem','Adulto','Idoso']],
+            df_resultado = df_resultado.merge(pivot[['Passeio','Criança','Adulto','Idoso']],
                                               left_on='PASSEIO', right_on='Passeio', how='left')
             df_resultado.drop(columns=['Passeio'], inplace=True)
 
@@ -426,15 +414,15 @@ if st.button("Executar Análise", disabled=not uploaded_files):
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         df_valores.to_excel(writer, sheet_name='Sheet1', startcol=0, startrow=0, index=False)
                         df_passeios.to_excel(writer, sheet_name='Sheet1', startcol=3, startrow=0, index=False)
-                        # Adicionar análise de idades a partir da coluna L (índice 11)
+                        # Adicionar análise de idades a partir da coluna J (índice 9)
                         if df_resumo_idades is not None:
-                            df_resumo_idades.to_excel(writer, sheet_name='Sheet1', startcol=11, startrow=0, index=False)
+                            df_resumo_idades.to_excel(writer, sheet_name='Sheet1', startcol=9, startrow=0, index=False)
                         # Nova sheet com pessoas e passeios
                         if not df_pessoas_passeios.empty:
                             df_pessoas_passeios.to_excel(writer, sheet_name='PessoasPasseios', index=False)
-                        # Nova sheet com resumo de Origens
+                        # Resumo de Origens na coluna N (índice 13) da primeira sheet
                         if df_Origens is not None and not df_Origens.empty:
-                            df_Origens.to_excel(writer, sheet_name='ResumoOrigens', index=False)
+                            df_Origens.to_excel(writer, sheet_name='Sheet1', startcol=13, startrow=0, index=False)
                     excel_data = output.getvalue()
 
                     st.success("✅ Análise Concluída!")
