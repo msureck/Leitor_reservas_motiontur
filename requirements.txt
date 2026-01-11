@@ -1,0 +1,6 @@
+# requirements.txt para empacotar o projeto com PyInstaller
+streamlit
+pandas
+tabula-py
+PyPDF2
+openpyxl
