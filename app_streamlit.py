@@ -95,14 +95,14 @@ def extrair_idades_do_pdf(caminho_pdf):
 def classificar_por_faixa_etaria(idade):
     """
     Classifica a idade em faixas:
-    Criança (<12), Adulto (<59), Idoso (60+)
+    CHD (<12), ADT (<59), MI (60+)
     """
     if idade <= 12:
-        return 'Criança'
+        return 'CHD'
     elif idade < 60:
-        return 'Adulto'
+        return 'ADT'
     else:
-        return 'Idoso'
+        return 'MI'
 
 def extrair_Origem(nome_arquivo):
     # Extrai o Origem se houver (palavra(s) antes do primeiro nome)
@@ -230,30 +230,30 @@ def processar_pdfs(uploaded_files):
                 df_valores = df_valores.drop(columns=['VALOR PAGO'])
                 df_valores = df_valores.drop(columns=['SALDO'])
                 
-                # Renomear a coluna VALOR TOTAL para Valor por Voucher
-                df_valores = df_valores.rename(columns={'VALOR TOTAL': 'Valor por Voucher'})
+                # Renomear a coluna VALOR TOTAL para VALOR DO PACOTE
+                df_valores = df_valores.rename(columns={'VALOR TOTAL': 'VALOR DO PACOTE'})
 
                 try:
-                    df_valores['Valor por Voucher'] = df_valores['Valor por Voucher'].str.replace('R$', '', regex=False)
-                    df_valores['Valor por Voucher'] = df_valores['Valor por Voucher'].str.replace('.', '', regex=False)
-                    df_valores['Valor por Voucher'] = df_valores['Valor por Voucher'].str.replace(',', '.', regex=False)
+                    df_valores['VALOR DO PACOTE'] = df_valores['VALOR DO PACOTE'].str.replace('R$', '', regex=False)
+                    df_valores['VALOR DO PACOTE'] = df_valores['VALOR DO PACOTE'].str.replace('.', '', regex=False)
+                    df_valores['VALOR DO PACOTE'] = df_valores['VALOR DO PACOTE'].str.replace(',', '.', regex=False)
                 except:
                     pass
 
                 # Convertendo a coluna para tipo numérico
-                df_valores['Valor por Voucher'] = pd.to_numeric(df_valores['Valor por Voucher'], errors='coerce')
+                df_valores['VALOR DO PACOTE'] = pd.to_numeric(df_valores['VALOR DO PACOTE'], errors='coerce')
 
                 df_valores = df_valores.dropna()
 
                 pdf_base_name_clean = pdf_base_name.replace('.pdf', '')
 
                 # Adicione a coluna com o nome do PDF no início do DataFrame
-                df_valores.insert(0, 'Nome Arquivo', pdf_base_name_clean)
+                df_valores.insert(0, 'RESERVAS', pdf_base_name_clean)
 
                 resultados_valores = pd.concat([resultados_valores, df_valores], ignore_index=True)
                 # Salvar valor para o arquivo
-                if not df_valores.empty and 'Valor por Voucher' in df_valores.columns:
-                    valores_por_arquivo[pdf_base_name] = df_valores['Valor por Voucher'].sum()
+                if not df_valores.empty and 'VALOR DO PACOTE' in df_valores.columns:
+                    valores_por_arquivo[pdf_base_name] = df_valores['VALOR DO PACOTE'].sum()
 
                 # Extraindo Passeios
                 extraction_area_passeios = [passeio, 0.00, (passeio + 50.00), 600.00]
@@ -273,31 +273,38 @@ def processar_pdfs(uploaded_files):
     contagem = df_resultado['PASSEIO'].value_counts().to_dict()
 
     # Adicionando a contagem como uma nova coluna no DataFrame
-    df_resultado['Quantidade'] = df_resultado['PASSEIO'].map(contagem)
+    df_resultado['TOTAL'] = df_resultado['PASSEIO'].map(contagem)
 
     # Removendo as linhas duplicadas mantendo apenas a primeira ocorrência de cada nome
     df_resultado.drop_duplicates(subset='PASSEIO', keep='first', inplace=True)
 
+    # Renomear coluna PASSEIO para PASSEIOS
+    if 'PASSEIO' in df_resultado.columns:
+        df_resultado.rename(columns={'PASSEIO': 'PASSEIOS'}, inplace=True)
+    # Garantir que a coluna TOTAL está presente e renomeada corretamente
+    if 'Qtde' in df_resultado.columns:
+        df_resultado.rename(columns={'Qtde': 'TOTAL'}, inplace=True)
+
     df = pd.DataFrame(resultados_valores)
     
     # Adicionar linha de total
-    if not df.empty and 'Valor por Voucher' in df.columns:
+    if not df.empty and 'VALOR DO PACOTE' in df.columns:
         # Calcular a soma antes de formatar
-        total_valor = df['Valor por Voucher'].sum()
+        total_valor = df['VALOR DO PACOTE'].sum()
         
         # Criar linha vazia
         linha_vazia = pd.DataFrame([{col: '' for col in df.columns}])
         
         # Criar linha de total
         linha_total = pd.DataFrame([{col: '' for col in df.columns}])
-        linha_total.loc[0, 'Nome Arquivo'] = 'Total:'
-        linha_total.loc[0, 'Valor por Voucher'] = total_valor
+        linha_total.loc[0, 'RESERVAS'] = 'Total:'
+        linha_total.loc[0, 'VALOR DO PACOTE'] = total_valor
         
         # Concatenar as linhas
         df = pd.concat([df, linha_vazia, linha_total], ignore_index=True)
         
-        # Formatar a coluna Valor por Voucher para R$ 1.000,00
-        df['Valor por Voucher'] = df['Valor por Voucher'].apply(
+        # Formatar a coluna VALOR DO PACOTE para R$ 1.000,00
+        df['VALOR DO PACOTE'] = df['VALOR DO PACOTE'].apply(
             lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if pd.notna(x) and x != '' else x
         )
 
@@ -316,21 +323,21 @@ def processar_pdfs(uploaded_files):
 
         total = len(todas_idades)
         df_resumo_idades = pd.DataFrame({
-            'Faixa Etária': [
-                'Criança (<12 anos)',
-                'Adulto (12-59 anos)',
-                'Idoso (60+ anos)',
+            'PAXS': [
+                'CHD (<12 anos)',
+                'ADT (13-59 anos)',
+                'MI (60+ anos)',
                 '',
                 'TOTAL'
             ],
-            'Quantidade': [
+            'Qtde': [
                 criancas,
                 adultos,
                 idosos,
                 '',
                 total
             ],
-            'Percentual': [
+            '%': [
                 f"{(criancas/total*100):.1f}%" if total > 0 else "0%",
                 f"{(adultos/total*100):.1f}%" if total > 0 else "0%",
                 f"{(idosos/total*100):.1f}%" if total > 0 else "0%",
@@ -344,24 +351,24 @@ def processar_pdfs(uploaded_files):
     # Adicionar contagem de faixas etárias por passeio
     if not df_pessoas_passeios.empty and 'Passeio' in df_pessoas_passeios.columns:
         # Adiciona coluna de faixa etária
-        df_pessoas_passeios['Faixa Etária'] = df_pessoas_passeios['Idade'].apply(classificar_por_faixa_etaria)
+        df_pessoas_passeios['PAXS'] = df_pessoas_passeios['Idade'].apply(classificar_por_faixa_etaria)
         # Pivot para contar por passeio e faixa
         pivot = pd.pivot_table(
             df_pessoas_passeios,
             index='Passeio',
-            columns='Faixa Etária',
+            columns='PAXS',
             values='Nome',
             aggfunc='count',
             fill_value=0
         ).reset_index()
         # Garantir colunas presentes
-        for col in ['Criança', 'Adulto', 'Idoso']:
+        for col in ['CHD', 'ADT', 'MI']:
             if col not in pivot.columns:
                 pivot[col] = 0
         # Mesclar com df_resultado (df_passeios)
-        if not df_resultado.empty and 'PASSEIO' in df_resultado.columns:
-            df_resultado = df_resultado.merge(pivot[['Passeio','Criança','Adulto','Idoso']],
-                                              left_on='PASSEIO', right_on='Passeio', how='left')
+        if not df_resultado.empty and 'PASSEIOS' in df_resultado.columns:
+            df_resultado = df_resultado.merge(pivot[['Passeio','CHD','ADT','MI']],
+                                              left_on='PASSEIOS', right_on='Passeio', how='left')
             df_resultado.drop(columns=['Passeio'], inplace=True)
 
     # DataFrame de Origens
@@ -369,22 +376,26 @@ def processar_pdfs(uploaded_files):
     if Origens_lista:
         df_valores_arquivos = pd.DataFrame({
             'Arquivo': list(valores_por_arquivo.keys()),
-            'Origem': [extrair_Origem(nome) for nome in valores_por_arquivo.keys()],
-            'Valor por Arquivo': list(valores_por_arquivo.values())
+            'ORIGEM': [extrair_Origem(nome) for nome in valores_por_arquivo.keys()],
+            'VALOR DO PACOTE': list(valores_por_arquivo.values())
         })
-        df_Origens = df_valores_arquivos.groupby('Origem').agg(
-            Quantidade_Arquivos=('Arquivo', 'count'),
-            Soma_Valores=('Valor por Arquivo', 'sum')
+        df_Origens = df_valores_arquivos.groupby('ORIGEM').agg(
+            Qtde=('Arquivo', 'count'),
+            **{'VALOR DO PACOTE': ('VALOR DO PACOTE', 'sum')}
         ).reset_index()
-        # Formatar coluna Soma_Valores
-        df_Origens['Soma_Valores'] = df_Origens['Soma_Valores'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+        # Calcular o total geral para porcentagem
+        total_geral = df_Origens['VALOR DO PACOTE'].sum()
+        # Adicionar coluna de porcentagem
+        df_Origens['%'] = df_Origens['VALOR DO PACOTE'].apply(lambda x: f"{(x/total_geral*100):.1f}%" if total_geral > 0 else "0%")
+        # Formatar coluna VALOR DO PACOTE
+        df_Origens['VALOR DO PACOTE'] = df_Origens['VALOR DO PACOTE'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
         # Adicionar linha em branco e linha de total
-        # Soma apenas dos valores já agrupados por Origem (removendo linhas vazias e total)
-        soma_Origens = df_Origens['Soma_Valores'].replace('[^\d,]', '', regex=True).replace('', '0').apply(lambda x: float(x.replace('.', '').replace(',', '.')) if x else 0.0).sum()
+        soma_Origens = df_Origens['VALOR DO PACOTE'].replace('[^\d,]', '', regex=True).replace('', '0').apply(lambda x: float(x.replace('.', '').replace(',', '.')) if x else 0.0).sum()
         linha_vazia = pd.DataFrame([{col: '' for col in df_Origens.columns}])
         linha_total = pd.DataFrame([{col: '' for col in df_Origens.columns}])
-        linha_total.loc[0, 'Origem'] = 'Total:'
-        linha_total.loc[0, 'Soma_Valores'] = f"R$ {soma_Origens:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        linha_total.loc[0, 'ORIGEM'] = 'Total:'
+        linha_total.loc[0, 'VALOR DO PACOTE'] = f"R$ {soma_Origens:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        linha_total.loc[0, '%'] = '100%'
         df_Origens = pd.concat([df_Origens, linha_vazia, linha_total], ignore_index=True)
     return df, df_resultado, df_resumo_idades, df_detalhes_idades, df_pessoas_passeios, df_Origens
 
@@ -417,9 +428,7 @@ if st.button("Executar Análise", disabled=not uploaded_files):
                         # Adicionar análise de idades a partir da coluna J (índice 9)
                         if df_resumo_idades is not None:
                             df_resumo_idades.to_excel(writer, sheet_name='Sheet1', startcol=9, startrow=0, index=False)
-                        # Nova sheet com pessoas e passeios
-                        if not df_pessoas_passeios.empty:
-                            df_pessoas_passeios.to_excel(writer, sheet_name='PessoasPasseios', index=False)
+                        # ...sheet PessoasPasseios removida...
                         # Resumo de Origens na coluna N (índice 13) da primeira sheet
                         if df_Origens is not None and not df_Origens.empty:
                             df_Origens.to_excel(writer, sheet_name='Sheet1', startcol=13, startrow=0, index=False)
