@@ -392,23 +392,6 @@ if st.button("Executar Análise", disabled=not uploaded_files):
 
                     st.success("✅ Análise Concluída!")
 
-                    # Mostrar preview dos dados
-                    st.markdown("### Preview dos Valores")
-                    st.dataframe(df_valores, use_container_width=True)
-
-                    st.markdown("### Preview dos Passeios")
-                    st.dataframe(df_passeios, use_container_width=True)
-
-                    # Mostrar análise de idades
-                    if df_resumo_idades is not None:
-                        st.markdown("### Análise de Idades")
-                        st.dataframe(df_resumo_idades, use_container_width=True)
-
-                    # Preview sheet PessoasPasseios
-                    if not df_pessoas_passeios.empty:
-                        st.markdown("### Pessoas e Passeios")
-                        st.dataframe(df_pessoas_passeios, use_container_width=True)
-
                     # Botão de download
                     st.download_button(
                         label="📥 Download do Excel",
